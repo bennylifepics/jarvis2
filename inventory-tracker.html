@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventory Tracker (Local + Ficheiro)</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background:#f7f7f7; }
+    .card { background:#fff; border:1px solid #ddd; border-radius:12px; padding:16px; margin-bottom:16px; }
+    input, select, button { padding:8px; margin:4px 0; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #e5e5e5; padding:8px; text-align:left; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+  <h1>Operations / Inventory Tracker</h1>
+
+  <div class="card">
+    <h2>Adicionar item</h2>
+    <div class="row">
+      <input id="item" placeholder="Item" />
+      <input id="category" placeholder="Categoria" />
+      <input id="qty" type="number" min="0" placeholder="Quantidade" />
+      <button id="addBtn">Guardar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Dados</h2>
+    <div class="row">
+      <button id="exportJsonBtn">Exportar JSON</button>
+      <button id="importJsonBtn">Importar JSON</button>
+      <button id="clearDataBtn">Limpar dados</button>
+      <input id="importFile" type="file" accept="application/json" style="display:none" />
+    </div>
+    <p id="status"></p>
+    <table>
+      <thead><tr><th>Item</th><th>Categoria</th><th>Quantidade</th><th>Ações</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // Estado principal (compatível com a ideia do teu HTML grande)
+    const state = {
+      inventory: []
+    };
+
+    const STORAGE_KEY = 'operations-tracker-v1';
+
+    function uuid() {
+      return 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    function setStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    // 1) Guardar automaticamente no browser
+    function saveLocal() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      setStatus('Dados guardados localmente.');
+    }
+
+    // 2) Carregar dados guardados
+    function loadLocal() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      try {
+        const data = JSON.parse(raw);
+        if (data && Array.isArray(data.inventory)) {
+          state.inventory = data.inventory;
+          setStatus('Dados carregados do localStorage.');
+        }
+      } catch (e) {
+        setStatus('Erro ao ler localStorage.');
+      }
+    }
+
+    // 3) Exportar para ficheiro JSON
+    function exportJson() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'inventory-data.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 500);
+      setStatus('Ficheiro JSON exportado.');
+    }
+
+    // 4) Importar ficheiro JSON
+    function importJsonFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result);
+          if (!parsed || !Array.isArray(parsed.inventory)) {
+            throw new Error('Formato inválido');
+          }
+          state.inventory = parsed.inventory;
+          render();
+          saveLocal();
+          setStatus('Ficheiro importado com sucesso.');
+        } catch (e) {
+          setStatus('JSON inválido. Usa um ficheiro exportado pela app.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function removeItem(id) {
+      state.inventory = state.inventory.filter(i => i.id !== id);
+      render();
+      saveLocal();
+    }
+
+    function render() {
+      const tbody = document.getElementById('tbody');
+      if (!state.inventory.length) {
+        tbody.innerHTML = '<tr><td colspan="4">Sem dados.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = state.inventory.map(r => `
+        <tr>
+          <td>${r.item}</td>
+          <td>${r.category}</td>
+          <td>${r.qty}</td>
+          <td><button data-del="${r.id}">Apagar</button></td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('addBtn').addEventListener('click', () => {
+      const item = document.getElementById('item').value.trim();
+      const category = document.getElementById('category').value.trim();
+      const qty = Number(document.getElementById('qty').value || 0);
+      if (!item || !category) {
+        setStatus('Preenche Item e Categoria.');
+        return;
+      }
+      state.inventory.unshift({ id: uuid(), item, category, qty });
+      document.getElementById('item').value = '';
+      document.getElementById('category').value = '';
+      document.getElementById('qty').value = '';
+      render();
+      saveLocal();
+    });
+
+    document.getElementById('tbody').addEventListener('click', (e) => {
+      const id = e.target.getAttribute('data-del');
+      if (id) removeItem(id);
+    });
+
+    document.getElementById('exportJsonBtn').addEventListener('click', exportJson);
+    document.getElementById('importJsonBtn').addEventListener('click', () => {
+      document.getElementById('importFile').click();
+    });
+    document.getElementById('importFile').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) importJsonFile(file);
+      e.target.value = '';
+    });
+
+    document.getElementById('clearDataBtn').addEventListener('click', () => {
+      state.inventory = [];
+      render();
+      saveLocal();
+      setStatus('Dados limpos.');
+    });
+
+    // arranque
+    loadLocal();
+    render();
+  </script>
+</body>
+</html>
